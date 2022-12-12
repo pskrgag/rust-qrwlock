@@ -1,3 +1,16 @@
+//! A fair rwlock. Enspired by [qrwlock from linux](https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git/tree/include/asm-generic/qrwlock.h) 
+//!
+//! Why not generic rwlock?
+//!
+//! Generic rwlock has 2 types: read-preffered and write-preffered. That means
+//! readers or writters should wait for all opposite accessors finish their work.
+//! This might cause denial of service problems when lock is under huge contention or
+//! in AMP enviroment.
+//!
+//! Qrwlock solves unfairness by serializing lock request with FIFO waitqueue based on
+//! ticket spinlock. That means if writer was placed into waitqueue before a reader,
+//! its lock request would be served earlier.
+
 use core::{
     cell::UnsafeCell,
     mem::ManuallyDrop,
@@ -82,15 +95,14 @@ impl<T> RwLock<T> {
     #[inline(always)]
     pub fn read_try_lock(&self) -> Option<ReadGuard<T>> {
         let mut raw = self.raw(Ordering::Relaxed);
-        let ret = Some(ReadGuard {
-            lock: &self,
-            data: unsafe { &*self.data.get() },
-        });
 
         if raw & WRITER_MASK == 0 {
             raw = self.add_read_count(Ordering::Acquire);
             if raw & WRITER_MASK == 0 {
-                ret
+                Some(ReadGuard {
+                    lock: &self,
+                    data: unsafe { &*self.data.get() },
+                })
             } else {
                 None
             }
@@ -161,7 +173,7 @@ impl<T> RwLock<T> {
     fn write_lock_slow(&self) {
         let _guard = self.wq.lock();
 
-        if self.raw(Ordering::Relaxed) == 0 || self.write_lock_fast() {
+        if self.raw(Ordering::Relaxed) == 0 && self.write_lock_fast() {
             return;
         }
 
@@ -169,9 +181,6 @@ impl<T> RwLock<T> {
 
         loop {
             let raw = self.raw(Ordering::Relaxed);
-
-            // #[cfg(test)]
-            // std::println!("raw = {}", raw);
 
             if raw == WRITER_WAITING
                 && unsafe {
@@ -217,18 +226,23 @@ impl<T> RwLock<T> {
         }
     }
 
+    #[inline(always)]
     pub(crate) fn write_unlock(&self) {
-        unsafe { self.raw.raw.w_lock.store(0, Ordering::Release) };
+        unsafe {
+            self.raw.raw.w_lock.store(0, Ordering::Release)
+        };
     }
 }
 
 impl<'a, T> Drop for ReadGuard<'a, T> {
+    #[inline(always)]
     fn drop(&mut self) {
         self.lock.sub_read_count(Ordering::Release);
     }
 }
 
 impl<'a, T> Drop for WriteGuard<'a, T> {
+    #[inline(always)]
     fn drop(&mut self) {
         self.lock.write_unlock();
     }

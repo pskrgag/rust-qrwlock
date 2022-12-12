@@ -3,6 +3,11 @@ name = "qrwlock"
 version = "0.1.0"
 edition = "2021"
 crate-type = ["lib"]
+authors = ["Pavel Skripkin paskripkin@gmail.com"]
+license = "MIT"
+repository = "https://github.com/pskrgag/rust-qrwlock"
+keywords = ["rwlock"]
+description = "Fair queued read-write lock"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 

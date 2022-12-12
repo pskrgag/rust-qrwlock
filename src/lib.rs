@@ -3,7 +3,6 @@
 #[cfg(test)]
 extern crate std;
 
-#[macro_use]
 extern crate static_assertions;
 
 pub mod qrwlock;
@@ -16,6 +15,7 @@ mod test {
     use std::thread;
     use std::time::Duration;
     use std::vec::Vec;
+    use std::sync::atomic::{Ordering, AtomicU32};
 
     #[test]
     fn qrwlock_test_single_threaded() {
@@ -36,9 +36,10 @@ mod test {
     fn qrwlock_test_multy_threaded() {
         const READ_NUM_THREADS: usize = 10;
         const WRITE_NUM_THREADS: usize = 2;
-        const WRITE_LOCK: usize = 1 << 31;
+        const WRITER: u32 = 1 << 31;
 
-        let lock = Arc::new(RwLock::new(0));
+        let lock = Arc::new(RwLock::new(AtomicU32::new(0)));
+
         let r_ths: Vec<_> = (0..READ_NUM_THREADS)
             .map(|_| {
                 let lock = lock.clone();
@@ -47,8 +48,12 @@ mod test {
 
                     for _ in 0..100 {
                         let locked = lock.read();
-                        assert!(*locked & WRITE_LOCK == 0);
-                        thread::sleep(Duration::from_millis(rng.gen_range(10..20)));
+                        assert!((*locked).load(Ordering::Relaxed) & WRITER == 0);
+
+                        (*locked).fetch_add(1, Ordering::Relaxed);
+                        thread::sleep(Duration::from_millis(rng.gen_range(10..50)));
+                        (*locked).fetch_sub(1, Ordering::Relaxed);
+
                         drop(locked);
 
                         thread::yield_now();
@@ -64,11 +69,12 @@ mod test {
                     let mut rng = rand::thread_rng();
 
                     for _ in 0..100 {
-                        let mut locked = lock.write();
-                        assert!(*locked & WRITE_LOCK == 0);
-                        *locked |= WRITE_LOCK;
-                        thread::sleep(Duration::from_millis(rng.gen_range(10..20)));
-                        *locked &= !WRITE_LOCK;
+                        let locked = lock.write();
+
+                        assert!((*locked).compare_exchange(0, WRITER, Ordering::Relaxed, Ordering::Relaxed).is_ok());
+                        thread::sleep(Duration::from_millis(rng.gen_range(10..50)));
+                        assert!((*locked).compare_exchange(WRITER, 0, Ordering::Relaxed, Ordering::Relaxed).is_ok());
+
                         drop(locked);
 
                         thread::yield_now();
