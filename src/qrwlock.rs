@@ -1,15 +1,4 @@
 //! A fair rwlock. Enspired by [qrwlock from linux](https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git/tree/include/asm-generic/qrwlock.h) 
-//!
-//! Why not generic rwlock?
-//!
-//! Generic rwlock has 2 types: read-preffered and write-preffered. That means
-//! readers or writters should wait for all opposite accessors finish their work.
-//! This might cause denial of service problems when lock is under huge contention or
-//! in AMP enviroment.
-//!
-//! Qrwlock solves unfairness by serializing lock request with FIFO waitqueue based on
-//! ticket spinlock. That means if writer was placed into waitqueue before a reader,
-//! its lock request would be served earlier.
 
 use core::{
     cell::UnsafeCell,
@@ -46,23 +35,44 @@ union RawRwlock {
 
 static_assertions::const_assert!(core::mem::size_of::<RawRwlock>() == core::mem::size_of::<u32>());
 
+/// A [read-write lock](https://en.wikipedia.org/wiki/Readers%E2%80%93writer_lock) that provides
+/// serialization between one reader and any amount of readers
+///
+/// This lock acts as `std::sync::RwLock`, but uses spinning as backoff mechanism and does not
+/// prone to reader or writer starvations
+///
+/// Why not generic rwlock?
+///
+/// Generic rwlock has 2 types: read-preffered and write-preffered. That means
+/// readers or writters should wait for all opposite accessors finish their work.
+/// This might cause denial of service problems when lock is under huge contention or
+/// in AMP enviroment.
+///
+/// Qrwlock solves unfairness by serializing lock request with FIFO waitqueue based on
+/// ticket spinlock. That means if writer was placed into waitqueue before a reader,
+/// its lock request would be served earlier.
 pub struct RwLock<T> {
     raw: RawRwlock,
     data: UnsafeCell<T>,
     wq: TicketMutex<()>,
 }
 
+/// Guard that provides read-only access to underlying data
 pub struct ReadGuard<'a, T: 'a> {
     lock: &'a RwLock<T>,
     data: &'a T,
 }
 
+/// Guard that provides read-rite access to underlying data
+/// WriteGuard<T> guarantees exclusive access.
 pub struct WriteGuard<'a, T: 'a> {
     lock: &'a RwLock<T>,
     data: &'a mut T,
 }
 
 impl<T> RwLock<T> {
+    /// Creates a new rwlock wrapping passed data
+    #[inline]
     pub fn new(data: T) -> Self {
         Self {
             wq: TicketMutex::new(()),
@@ -71,6 +81,9 @@ impl<T> RwLock<T> {
         }
     }
 
+    /// Tries to acquire the lock for write.
+    ///
+    /// Returns Some(WriteGuard<T>) if lock was acquired, None otherwise
     #[inline(always)]
     pub fn write_try_lock(&self) -> Option<WriteGuard<T>> {
         let raw = self.raw(Ordering::Relaxed);
@@ -92,6 +105,9 @@ impl<T> RwLock<T> {
         }
     }
 
+    /// Tries to acquire the lock for read
+    ///
+    /// Returns Some(ReadGuard<T>) if lock was acquired, None otherwise
     #[inline(always)]
     pub fn read_try_lock(&self) -> Option<ReadGuard<T>> {
         let mut raw = self.raw(Ordering::Relaxed);
@@ -202,6 +218,12 @@ impl<T> RwLock<T> {
         }
     }
 
+    /// Acquire the lock for read
+    ///
+    /// Returns ReadGuard<T>
+    ///
+    /// If lock is locked for readers than only readers may access the underlying data
+    /// This function is divided into fast and slow path. Fast path is inlined, slow path is not
     #[inline(always)]
     pub fn read(&self) -> ReadGuard<T> {
         if !self.read_lock_fast() {
@@ -214,6 +236,11 @@ impl<T> RwLock<T> {
         }
     }
 
+    /// Acquire the lock for write
+    ///
+    /// Returns WriteGuard<T>
+    ///
+    /// This function is divided into fast and slow path. Fast path is inlined, slow path is not
     #[inline(always)]
     pub fn write(&self) -> WriteGuard<T> {
         if !self.write_lock_fast() {

@@ -1,13 +1,3 @@
-# Queued rwlock implementation in Rust
-
-This read-write lock uses ticket mutex as waitqueue, which acts
-like FIFO. It allows to avoid unfairness and starvation of readers or
-writes, that is common problem for generic rwlocks (read-preffered or
-write-preffered)
-
-# Example
-
-```rust
 extern crate qrwlock;
 use std::{sync::Arc, thread};
 
@@ -31,8 +21,3 @@ fn main() {
 
     assert_eq!(*counter.read(), 1000);
 }
-```
-
-# License
-
-`qrwlock` is distributed under the MIT License, (See `LICENSE`).

@@ -1,4 +1,8 @@
+//! This crate provides fair read-write lock, that does not prone to
+//! reader or writer stravations
+
 #![no_std]
+#![deny(missing_docs)]
 
 #[cfg(test)]
 extern crate std;
@@ -6,6 +10,7 @@ extern crate std;
 extern crate static_assertions;
 
 pub mod qrwlock;
+pub use crate::qrwlock::*;
 
 #[cfg(test)]
 mod test {

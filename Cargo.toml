@@ -1,18 +1,18 @@
 [package]
 name = "qrwlock"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 crate-type = ["lib"]
 authors = ["Pavel Skripkin paskripkin@gmail.com"]
 license = "MIT"
 repository = "https://github.com/pskrgag/rust-qrwlock"
-keywords = ["rwlock"]
+keywords = ["rwlock", "locking"]
 description = "Fair queued read-write lock"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-spin = {version = "0.9.4", features = ["ticket_mutex"] }
+spin = {version = "0.9.4", default-features = false, features = ["ticket_mutex", "spin_mutex"] }
 static_assertions = "1.1.0"
 
 [dev-dependencies]
