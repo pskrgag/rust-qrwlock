@@ -12,7 +12,7 @@ description = "Fair queued read-write lock"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-spin = {version = "0.9.4", default-features = false, features = ["ticket_mutex", "spin_mutex"] }
+spin = {version = "0.9.8", default-features = false, features = ["ticket_mutex", "spin_mutex"] }
 static_assertions = "1.1.0"
 
 [dev-dependencies]
